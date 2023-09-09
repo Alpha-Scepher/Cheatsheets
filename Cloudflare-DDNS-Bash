@@ -12,8 +12,7 @@ cd cloudflared-ddns
 mkdir logs								 	## logs the output of the cloudflared-ddns.sh script ( opiopnal ) 
 sudo nano cloudflared-ddns.sh
 
-
-the settings confused me for awhile but this is the config : 
+										## How to use/edit this script :
 --------------------------------
 auth_email="youremail@example.com"       	## The email used to login 'https://dash.cloudflare.com'
 auth_method="global"                     	## Set to "global" for Global API Key or "token" for Scoped API Token
