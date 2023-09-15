@@ -1,0 +1,149 @@
+############## Nextcloud Using Unraid AIO Community App + Traefik + Cloudflare Tunnel ##############
+
+# Traefik Community App Setup:
+# - Use the default configuration in Unraid GUI.
+# - Add your domain and Cloudflare API Token.
+# - Start the Traefik app.
+
+# Edit Traefik Configuration (docker-compose for the main app):
+
+version: '3'
+
+services:
+  traefik:
+    image: "traefik:v2.5"
+    container_name: "traefik"
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.http.address=:80"  # Ensure these ports are free (change your GUI ports in Unraid > Settings > Management Access / HTTP port: HTTPS port:)
+      - "--entrypoints.https.address=:443"  # Change your GUI ports in Unraid > Settings > Management Access / HTTPS port:
+      - "--certificatesresolvers.letsencrypt.acme.email=your-email@here.com"  # Edit this
+      - "--certificatesresolvers.letsencrypt.acme.storage=/etc/traefik/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.dnschallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.dnschallenge.provider=cloudflare"
+      - "--certificatesresolvers.letsencrypt.acme.dnschallenge.resolvers=1.1.1.1:53,1.0.0.1:53"
+      - "traefik.http.middlewares.test-redirectscheme.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.test-redirectscheme.redirectscheme.permanent=true"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /etc/traefik/acme.json:/etc/traefik/acme.json
+    environment:
+      - "TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_CERTAINSANSENABLED=true"
+      - "TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_CERTAINSANS_1_MAIN=domain1.com"  # Edit this
+      - "TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_CERTAINSANS_1_SANS=*.domain1.com"  # Edit this
+      - "TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_CERTAINSANS_2_MAIN=domain2.com"  # Edit this or delete if not needed
+      - "TRAEFIK_CERTIFICATESRESOLVERS_LETSENCRYPT_ACME_CERTAINSANS_2_MAIN=domain2.com"  # Edit this or delete if not needed
+    networks:
+      - frontend
+
+networks:
+  frontend:
+    external: true
+
+# Create and Edit config.yml File in /mnt/user/appdata/traefik:
+
+http:
+  routers:
+    nextcloud:
+      entrypoints:
+        - "https"
+      rule: "Host(`your-domain-here.example`)"  # Edit this
+      middlewares:
+        - https-redirect
+        - nextcloud-secure-headers
+      tls:
+        domains:
+          - main: "your-domain-here.example"  # Edit this
+      service: nextcloud
+  services:
+    nextcloud:
+      loadBalancer:
+        servers:
+          - url: "http://your-servers-IP-Here:11000"  # Use something like 192.168.1.107:11000 (11000 is the port for Apache when using reverse proxy, don't change it!)
+        passHostHeader: true
+  middlewares:
+    https-redirect:
+      redirectScheme:
+        scheme: https
+        permanent: true
+
+    nextcloud-secure-headers:
+      headers:
+        hostsProxyHeaders:
+          - "X-Forwarded-Host"
+        referrerPolicy: "same-origin"
+        customResponseHeaders:
+          X-Robots-Tag: "none"
+
+# Edit traefik.yml Static Config File in /mnt/user/appdata/traefik:
+
+global:
+  checkNewVersion: true
+  sendAnonymousUsage: false
+
+api:
+  dashboard: true
+  insecure: true
+
+entryPoints:
+  http:
+    address: :80
+    http:
+      redirections:
+        entryPoint:
+          to: https
+          scheme: https
+  https:
+    address: :443
+serversTransport:
+  insecureSkipVerify: true
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: your-cloudflare-email-here@example.com  # Edit this
+      storage: "/etc/traefik/acme.json"
+      keyType: "EC256"
+      caServer: "https://acme-v02.api.letsencrypt.org/directory"
+      dnsChallenge:
+        provider: "cloudflare"
+        resolvers:
+          - "1.1.1.2:53"
+          - "1.0.0.2:53"
+
+providers:
+  providersThrottleDuration: 2s
+
+  file:
+    filename: /etc/traefik/fileConfig.yml
+    watch: true
+
+  docker:
+    watch: true
+    network: frontend
+    defaultRule: "Host(`{{ lower (trimPrefix `/` .Name )}}.your-domain-here.example`)"  # Edit this
+    swarmModeRefreshSeconds: 15s
+    exposedByDefault: false
+
+# Set Up Cloudflare Tunnel:
+# - Go to your Cloudflare account & navigate to the Zero Trust section.
+# - Create a new tunnel, select the Docker option, and run the provided command in the Unraid console.
+
+# After your tunnel is set up:
+# - Go to the Public Hostname tab and create a new public hostname as: nextcloud.your-domain-here.example
+# - Point it to https://your-server-ip-here (e.g., 192.168.1.107).
+# - Set the type to HTTPS and click on Additional Settings > TLS > No TLS Verify / Enabled.
+
+# Install Nextcloud AIO Master Container from the Unraid Community Apps:
+# - Change the port from 8080 to something other than 8080 (e.g., 8666).
+
+# Access Nextcloud:
+# - When it's running, browse to: your-server-ip:8666 (e.g., 192.168.1.107:8666).
+# - Enter your domain name for Nextcloud, wait for verification, change timezone, and install!
+
+# DONE! - Hope it helped :) If you encounter issues, browse to your-server-ip:11000, and you should see a string at the top of the screen. Leave this page open and run verification again.
